@@ -412,7 +412,7 @@ class ZK {
       return [];
     }
     const totalSize = buffer.readUInt32LE(0);
-    this.userPacketSize = totalSize / this.usersCount || 28;
+    this.userPacketSize = Math.floor(totalSize / this.usersCount) || 28;
     const data = buffer.slice(4);
     const users = [];
     let maxUid = 0;
@@ -534,8 +534,9 @@ class ZK {
     Buffer.from(user.password || '', 'utf8').slice(0, 5).copy(buf, 4);
     Buffer.from(user.name || '', 'utf8').slice(0, 8).copy(buf, 9);
     buf.writeUInt32LE(user.card >>> 0, 17);
+    // offset 21 is padding (x)
     buf.writeUInt8(user.groupId ? Number(user.groupId) : 0, 22);
-    buf.writeInt16LE(0, 23); // timezone/reserved
+    buf.writeInt16LE(0, 23); // timezone/reserved (h)
     buf.writeUInt32LE(Number(user.userId) || 0, 25);
     return buf;
   }
@@ -545,13 +546,13 @@ class ZK {
     buf.writeUInt8(2, 0);
     buf.writeUInt16LE(user.uid, 1);
     buf.writeUInt8(user.privilege, 3);
-    Buffer.from(user.password || '', 'utf8').slice(0, 8).copy(buf, 4);
-    Buffer.from(user.name || '', 'utf8').slice(0, 24).copy(buf, 12);
-    buf.writeUInt32LE(user.card >>> 0, 36);
-    buf.writeUInt8(1, 40);
-    Buffer.from(user.groupId || '', 'utf8').slice(0, 7).copy(buf, 41);
+    Buffer.from(user.password || '', 'utf8').slice(0, 8).copy(buf, 4);  // 8s
+    Buffer.from(user.name || '', 'utf8').slice(0, 24).copy(buf, 12);     // 24s
+    buf.writeUInt32LE(user.card >>> 0, 36);                               // I
+    buf.writeUInt8(1, 40);                                                // B (constant 1)
+    Buffer.from(user.groupId || '', 'utf8').slice(0, 7).copy(buf, 41);    // 7s
     // offset 48 is padding (x)
-    Buffer.from(user.userId || '', 'utf8').slice(0, 24).copy(buf, 49);
+    Buffer.from(user.userId || '', 'utf8').slice(0, 24).copy(buf, 49);    // 24s
     return buf;
   }
 
