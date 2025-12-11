@@ -1254,6 +1254,7 @@ class ZK {
     const size = initialResponse.data.readUInt32LE(0);
     const chunks = [];
     let remaining = size;
+    let lastHeader = null;
     while (remaining > 0) {
       const packet = this.tcp ? await this._recvTcpRaw() : await this._recvUdpOnce();
       const offset = this.tcp ? 8 : 0;
@@ -1262,10 +1263,25 @@ class ZK {
       if (header[0] === CONST.CMD_DATA) {
         chunks.push(body);
         remaining -= body.length;
+        lastHeader = header;
       } else if (header[0] === CONST.CMD_ACK_OK) {
+        lastHeader = header;
         break;
       } else {
         break;
+      }
+    }
+    if (!lastHeader || lastHeader[0] !== CONST.CMD_ACK_OK) {
+      // try to consume trailing ACK OK like Python does
+      try {
+        const ackPkt = this.tcp ? await this._recvTcpRaw() : await this._recvUdpOnce();
+        const off = this.tcp ? 8 : 0;
+        const hdr = readHeader(ackPkt.slice(off, off + 8));
+        if (hdr[0] === CONST.CMD_ACK_OK) {
+          lastHeader = hdr;
+        }
+      } catch (e) {
+        // ignore ack errors
       }
     }
     return Buffer.concat(chunks).slice(0, size);
