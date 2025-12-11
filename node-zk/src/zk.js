@@ -367,6 +367,11 @@ class ZK {
       throw new Error('Buffered read not supported');
     }
     if (prep.code === CONST.CMD_DATA) {
+      if (this.tcp && prep.tcpLength && prep.data.length < (prep.tcpLength - 8)) {
+        const need = (prep.tcpLength - 8) - prep.data.length;
+        const more = await this._recvRawExact(need);
+        return { buffer: Buffer.concat([prep.data, more]), size: prep.data.length + more.length };
+      }
       return { buffer: prep.data, size: prep.data.length };
     }
     const size = prep.data.readUInt32LE(1);
@@ -1057,17 +1062,17 @@ class ZK {
       throw new Error('Not connected');
     }
     const packet = createHeader(command, commandString, this.sessionId, this.replyId);
-    const raw = this.tcp
+    const { payload, tcpLength } = this.tcp
       ? await this._sendTcp(packet)
-      : await this._sendUdp(packet);
+      : { payload: await this._sendUdp(packet), tcpLength: null };
 
-    const header = readHeader(raw.slice(0, 8));
+    const header = readHeader(payload.slice(0, 8));
     this.sessionId = header[2];
     this.replyId = header[3];
-    const data = raw.slice(8);
+    const data = payload.slice(8);
     const code = header[0];
     const status = [CONST.CMD_ACK_OK, CONST.CMD_PREPARE_DATA, CONST.CMD_DATA].includes(code);
-    return { status, code, header, data };
+    return { status, code, header, data, tcpLength };
   }
 
   async _sendUdp(packet) {
@@ -1141,7 +1146,7 @@ class ZK {
             return;
           }
           const size = merged.readUInt32LE(4);
-          resolve(merged.slice(8, 8 + size));
+          resolve({ payload: merged.slice(8, 8 + size), tcpLength: size });
         }
       };
 
@@ -1244,8 +1249,43 @@ class ZK {
     });
   }
 
+  async _recvRawExact(size) {
+    return new Promise((resolve, reject) => {
+      const chunks = [];
+      let remaining = size;
+      const timer = setTimeout(() => {
+        cleanup();
+        reject(new Error('TCP receive timeout'));
+      }, this.timeout);
+      const cleanup = () => {
+        clearTimeout(timer);
+        this.socket.removeListener('data', onData);
+        this.socket.removeListener('error', onErr);
+      };
+      const onErr = (err) => {
+        cleanup();
+        reject(err);
+      };
+      const onData = (chunk) => {
+        chunks.push(chunk);
+        remaining -= chunk.length;
+        if (remaining <= 0) {
+          cleanup();
+          resolve(Buffer.concat(chunks));
+        }
+      };
+      this.socket.once('error', onErr);
+      this.socket.on('data', onData);
+    });
+  }
+
   async _receiveChunk(initialResponse) {
     if (initialResponse.code === CONST.CMD_DATA) {
+      if (this.tcp && initialResponse.tcpLength && initialResponse.data.length < (initialResponse.tcpLength - 8)) {
+        const need = (initialResponse.tcpLength - 8) - initialResponse.data.length;
+        const more = await this._recvRawExact(need);
+        return Buffer.concat([initialResponse.data, more]);
+      }
       return initialResponse.data;
     }
     if (initialResponse.code !== CONST.CMD_PREPARE_DATA) {
