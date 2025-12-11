@@ -27,12 +27,23 @@ class ZK {
     this.replyId = CONST.USHRT_MAX - 1;
     this.socket = null;
     this.isConnected = false;
+    this.isEnabled = true;
 
     this.usersCount = 0;
     this.recordsCount = 0;
     this.userPacketSize = 28; // default zk6
     this.nextUid = 1;
     this.nextUserId = '1';
+    this.fingers = 0;
+    this.cards = 0;
+    this.fingersCap = 0;
+    this.usersCap = 0;
+    this.recCap = 0;
+    this.fingersAv = 0;
+    this.usersAv = 0;
+    this.recAv = 0;
+    this.faces = 0;
+    this.facesCap = 0;
   }
 
   log(msg) {
@@ -90,6 +101,7 @@ class ZK {
     if (!res.status) {
       throw new Error('Cannot enable device');
     }
+    this.isEnabled = true;
     return true;
   }
 
@@ -98,6 +110,7 @@ class ZK {
     if (!res.status) {
       throw new Error('Cannot disable device');
     }
+    this.isEnabled = false;
     return true;
   }
 
@@ -145,6 +158,124 @@ class ZK {
     return true;
   }
 
+  async getFirmwareVersion() {
+    const res = await this._sendCommand(CONST.CMD_GET_VERSION, Buffer.alloc(0), 1024);
+    if (!res.status) {
+      throw new Error('Cannot get firmware version');
+    }
+    return res.data.toString().split('\x00')[0];
+  }
+
+  async getSerialNumber() {
+    const res = await this._sendCommand(CONST.CMD_OPTIONS_RRQ, Buffer.from('~SerialNumber\x00'), 1024);
+    if (!res.status) {
+      throw new Error('Cannot get serial number');
+    }
+    const raw = res.data.toString().split('=', 2)[1] || '';
+    return raw.split('\x00')[0].replace('=', '');
+  }
+
+  async getPlatform() {
+    const res = await this._sendCommand(CONST.CMD_OPTIONS_RRQ, Buffer.from('~Platform\x00'), 1024);
+    if (!res.status) {
+      throw new Error('Cannot get platform');
+    }
+    const raw = res.data.toString().split('=', 2)[1] || '';
+    return raw.split('\x00')[0].replace('=', '');
+  }
+
+  async getMac() {
+    const res = await this._sendCommand(CONST.CMD_OPTIONS_RRQ, Buffer.from('MAC\x00'), 1024);
+    if (!res.status) {
+      throw new Error('Cannot get MAC address');
+    }
+    const raw = res.data.toString().split('=', 2)[1] || '';
+    return raw.split('\x00')[0];
+  }
+
+  async getDeviceName() {
+    const res = await this._sendCommand(CONST.CMD_OPTIONS_RRQ, Buffer.from('~DeviceName\x00'), 1024);
+    if (!res.status) {
+      return '';
+    }
+    const raw = res.data.toString().split('=', 2)[1] || '';
+    return raw.split('\x00')[0];
+  }
+
+  async getFaceVersion() {
+    const res = await this._sendCommand(CONST.CMD_OPTIONS_RRQ, Buffer.from('ZKFaceVersion\x00'), 1024);
+    if (!res.status) {
+      return null;
+    }
+    const raw = res.data.toString().split('=', 2)[1] || '';
+    return raw ? Number(raw.split('\x00')[0]) || 0 : 0;
+  }
+
+  async getFpVersion() {
+    const res = await this._sendCommand(CONST.CMD_OPTIONS_RRQ, Buffer.from('~ZKFPVersion\x00'), 1024);
+    if (!res.status) {
+      throw new Error('Cannot get fingerprint version');
+    }
+    const raw = res.data.toString().split('=', 2)[1] || '';
+    return raw ? Number(raw.replace(/=/g, '').split('\x00')[0]) || 0 : 0;
+  }
+
+  async getExtendFmt() {
+    const res = await this._sendCommand(CONST.CMD_OPTIONS_RRQ, Buffer.from('~ExtendFmt\x00'), 1024);
+    if (!res.status) {
+      return null;
+    }
+    const raw = res.data.toString().split('=', 2)[1] || '';
+    return raw ? Number(raw.split('\x00')[0]) || 0 : 0;
+  }
+
+  async getUserExtendFmt() {
+    const res = await this._sendCommand(CONST.CMD_OPTIONS_RRQ, Buffer.from('~UserExtFmt\x00'), 1024);
+    if (!res.status) {
+      return null;
+    }
+    const raw = res.data.toString().split('=', 2)[1] || '';
+    return raw ? Number(raw.split('\x00')[0]) || 0 : 0;
+  }
+
+  async getFaceFunOn() {
+    const res = await this._sendCommand(CONST.CMD_OPTIONS_RRQ, Buffer.from('FaceFunOn\x00'), 1024);
+    if (!res.status) {
+      return null;
+    }
+    const raw = res.data.toString().split('=', 2)[1] || '';
+    return raw ? Number(raw.split('\x00')[0]) || 0 : 0;
+  }
+
+  async getCompatOldFirmware() {
+    const res = await this._sendCommand(CONST.CMD_OPTIONS_RRQ, Buffer.from('CompatOldFirmware\x00'), 1024);
+    if (!res.status) {
+      return null;
+    }
+    const raw = res.data.toString().split('=', 2)[1] || '';
+    return raw ? Number(raw.split('\x00')[0]) || 0 : 0;
+  }
+
+  async getNetworkParams() {
+    const ip = await this._sendCommand(CONST.CMD_OPTIONS_RRQ, Buffer.from('IPAddress\x00'), 1024);
+    const mask = await this._sendCommand(CONST.CMD_OPTIONS_RRQ, Buffer.from('NetMask\x00'), 1024);
+    const gate = await this._sendCommand(CONST.CMD_OPTIONS_RRQ, Buffer.from('GATEIPAddress\x00'), 1024);
+    return {
+      ip: ip.status ? (ip.data.toString().split('=', 2)[1] || '').split('\x00')[0] : this.ip,
+      mask: mask.status ? (mask.data.toString().split('=', 2)[1] || '').split('\x00')[0] : '',
+      gateway: gate.status ? (gate.data.toString().split('=', 2)[1] || '').split('\x00')[0] : ''
+    };
+  }
+
+  async getPinWidth() {
+    const payload = Buffer.from(' P');
+    const res = await this._sendCommand(CONST.CMD_GET_PINWIDTH, payload, 9);
+    if (!res.status) {
+      throw new Error('Cannot get pin width');
+    }
+    return res.data[0];
+  }
+
   async readSizes() {
     const res = await this._sendCommand(CONST.CMD_GET_FREE_SIZES, Buffer.alloc(0), 1024);
     if (!res.status) {
@@ -158,8 +289,67 @@ class ZK {
         fields.push(data.readInt32LE(i * 4));
       }
       this.usersCount = fields[4];
+      this.fingers = fields[6];
       this.recordsCount = fields[8];
+      this.cards = fields[12];
+      this.fingersCap = fields[14];
+      this.usersCap = fields[15];
+      this.recCap = fields[16];
+      this.fingersAv = fields[17];
+      this.usersAv = fields[18];
+      this.recAv = fields[19];
       this.userPacketSize = this.userPacketSize || 28;
+      if (data.length >= 92) {
+        const faceFields = [];
+        for (let j = 0; j < 3; j += 1) {
+          faceFields.push(data.readInt32LE(80 + j * 4));
+        }
+        this.faces = faceFields[0];
+        this.facesCap = faceFields[2];
+      }
+    }
+    return true;
+  }
+
+  async freeData() {
+    const res = await this._sendCommand(CONST.CMD_FREE_DATA);
+    if (!res.status) {
+      throw new Error('Cannot free data');
+    }
+    return true;
+  }
+
+  async unlock(time = 3) {
+    const payload = Buffer.alloc(4);
+    payload.writeUInt32LE(Math.trunc(time) * 10, 0);
+    const res = await this._sendCommand(CONST.CMD_UNLOCK, payload);
+    if (!res.status) {
+      throw new Error('Cannot unlock door');
+    }
+    return true;
+  }
+
+  async getLockState() {
+    const res = await this._sendCommand(CONST.CMD_DOORSTATE_RRQ);
+    return Boolean(res.status);
+  }
+
+  async writeLcd(lineNumber, text) {
+    const payload = Buffer.alloc(3 + Buffer.byteLength(text, 'utf8'));
+    payload.writeInt16LE(lineNumber, 0);
+    payload.writeInt8(0, 2);
+    payload.write(' ' + text, 3);
+    const res = await this._sendCommand(CONST.CMD_WRITE_LCD, payload);
+    if (!res.status) {
+      throw new Error('Cannot write LCD');
+    }
+    return true;
+  }
+
+  async clearLcd() {
+    const res = await this._sendCommand(CONST.CMD_CLEAR_LCD);
+    if (!res.status) {
+      throw new Error('Cannot clear LCD');
     }
     return true;
   }
@@ -222,7 +412,7 @@ class ZK {
       return [];
     }
     const totalSize = buffer.readUInt32LE(0);
-    this.userPacketSize = Math.floor(totalSize / this.usersCount) || 28;
+    this.userPacketSize = totalSize / this.usersCount || 28;
     const data = buffer.slice(4);
     const users = [];
     let maxUid = 0;
@@ -328,6 +518,360 @@ class ZK {
     return true;
   }
 
+  _fingerRepackOnly(finger) {
+    const template = Buffer.isBuffer(finger.template) ? finger.template : Buffer.from(finger.template || []);
+    const buf = Buffer.alloc(2 + template.length);
+    buf.writeUInt16LE(template.length, 0);
+    template.copy(buf, 2);
+    return buf;
+  }
+
+  _userRepack29(user) {
+    const buf = Buffer.alloc(29);
+    buf.writeUInt8(2, 0);
+    buf.writeUInt16LE(user.uid, 1);
+    buf.writeUInt8(user.privilege, 3);
+    Buffer.from(user.password || '', 'utf8').slice(0, 5).copy(buf, 4);
+    Buffer.from(user.name || '', 'utf8').slice(0, 8).copy(buf, 9);
+    buf.writeUInt32LE(user.card >>> 0, 17);
+    buf.writeUInt8(user.groupId ? Number(user.groupId) : 0, 22);
+    buf.writeInt16LE(0, 23); // timezone/reserved
+    buf.writeUInt32LE(Number(user.userId) || 0, 25);
+    return buf;
+  }
+
+  _userRepack73(user) {
+    const buf = Buffer.alloc(73);
+    buf.writeUInt8(2, 0);
+    buf.writeUInt16LE(user.uid, 1);
+    buf.writeUInt8(user.privilege, 3);
+    Buffer.from(user.password || '', 'utf8').slice(0, 8).copy(buf, 4);
+    Buffer.from(user.name || '', 'utf8').slice(0, 24).copy(buf, 12);
+    buf.writeUInt32LE(user.card >>> 0, 36);
+    buf.writeUInt8(1, 40);
+    Buffer.from(user.groupId || '', 'utf8').slice(0, 7).copy(buf, 41);
+    // offset 48 is padding (x)
+    Buffer.from(user.userId || '', 'utf8').slice(0, 24).copy(buf, 49);
+    return buf;
+  }
+
+  async _sendWithBuffer(buffer) {
+    const MAX_CHUNK = 1024;
+    await this.freeData();
+    const prep = Buffer.alloc(4);
+    prep.writeUInt32LE(buffer.length, 0);
+    const ok = await this._sendCommand(CONST.CMD_PREPARE_DATA, prep);
+    if (!ok.status) {
+      throw new Error('Cannot prepare data');
+    }
+    let start = 0;
+    while (start + MAX_CHUNK <= buffer.length) {
+      await this._sendChunk(buffer.slice(start, start + MAX_CHUNK));
+      start += MAX_CHUNK;
+    }
+    if (start < buffer.length) {
+      await this._sendChunk(buffer.slice(start));
+    }
+  }
+
+  async _sendChunk(chunk) {
+    const res = await this._sendCommand(CONST.CMD_DATA, chunk);
+    if (!res.status) {
+      throw new Error('Cannot send chunk');
+    }
+    return true;
+  }
+
+  async saveUserTemplate(user, fingers = []) {
+    if (!user) {
+      throw new Error('User is required');
+    }
+    const targetUser = user.uid ? user : (await this.getUsers()).find((u) => u.uid === user || u.userId === String(user));
+    if (!targetUser) {
+      throw new Error('Cannot find user');
+    }
+    const fingerList = Array.isArray(fingers) ? fingers : [fingers];
+    return this.HRSaveUserTemplates([[targetUser, fingerList]]);
+  }
+
+  async HRSaveUserTemplates(userTemplates) {
+    let upack = Buffer.alloc(0);
+    let fpack = Buffer.alloc(0);
+    let table = Buffer.alloc(0);
+    let tstart = 0;
+    const fnum = 0x10;
+    for (const [user, fingers] of userTemplates) {
+      const u = user;
+      if (this.userPacketSize === 28) {
+        upack = Buffer.concat([upack, this._userRepack29(u)]);
+      } else {
+        upack = Buffer.concat([upack, this._userRepack73(u)]);
+      }
+      for (const finger of fingers) {
+        const tfp = this._fingerRepackOnly(finger);
+        const entry = Buffer.alloc(8);
+        entry.writeInt8(2, 0);
+        entry.writeUInt16LE(u.uid, 1);
+        entry.writeInt8(fnum + finger.fid, 3);
+        entry.writeUInt32LE(tstart, 4);
+        table = Buffer.concat([table, entry]);
+        tstart += tfp.length;
+        fpack = Buffer.concat([fpack, tfp]);
+      }
+    }
+    const head = Buffer.alloc(12);
+    head.writeUInt32LE(upack.length, 0);
+    head.writeUInt32LE(table.length, 4);
+    head.writeUInt32LE(fpack.length, 8);
+    const packet = Buffer.concat([head, upack, table, fpack]);
+    await this._sendWithBuffer(packet);
+    const payload = Buffer.alloc(8);
+    payload.writeUInt32LE(12, 0);
+    payload.writeUInt16LE(0, 4);
+    payload.writeUInt16LE(8, 6);
+    const res = await this._sendCommand(CONST._CMD_SAVE_USERTEMPS, payload);
+    if (!res.status) {
+      throw new Error('Cannot save user templates');
+    }
+    await this.refreshData();
+  }
+
+  async deleteUserTemplate({ uid = 0, tempId = 0, userId = '' } = {}) {
+    if (this.tcp && userId) {
+      const payload = Buffer.alloc(25);
+      Buffer.from(String(userId)).slice(0, 24).copy(payload, 0);
+      payload.writeUInt8(tempId, 24);
+      const res = await this._sendCommand(CONST._CMD_DEL_USER_TEMP, payload);
+      return Boolean(res.status);
+    }
+    if (!uid && userId) {
+      const users = await this.getUsers();
+      const found = users.find((u) => u.userId === String(userId));
+      if (!found) return false;
+      uid = found.uid;
+    }
+    if (!uid) return false;
+    const payload = Buffer.alloc(3);
+    payload.writeInt16LE(uid, 0);
+    payload.writeInt8(tempId, 2);
+    const res = await this._sendCommand(CONST.CMD_DELETE_USERTEMP, payload);
+    return Boolean(res.status);
+  }
+
+  async getUserTemplate({ uid = 0, tempId = 0, userId = '' } = {}) {
+    if (!uid && userId) {
+      const users = await this.getUsers();
+      const found = users.find((u) => u.userId === String(userId));
+      if (!found) return null;
+      uid = found.uid;
+    }
+    const payload = Buffer.alloc(3);
+    payload.writeInt16LE(uid, 0);
+    payload.writeInt8(tempId, 2);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const res = await this._sendCommand(CONST._CMD_GET_USERTEMP, payload, 1032);
+      const data = await this._receiveChunk(res);
+      if (data) {
+        let tpl = data.slice(0, -1);
+        if (tpl.length >= 6 && tpl.slice(-6).equals(Buffer.alloc(6))) {
+          tpl = tpl.slice(0, -6);
+        }
+        return { uid, fid: tempId, valid: 1, template: tpl };
+      }
+    }
+    return null;
+  }
+
+  async getTemplates() {
+    await this.readSizes();
+    if (!this.fingers) {
+      return [];
+    }
+    const { buffer, size } = await this.readWithBuffer(CONST.CMD_DB_RRQ, CONST.FCT_FINGERTMP);
+    if (size < 4) {
+      return [];
+    }
+    let total = buffer.readInt32LE(0);
+    let data = buffer.slice(4);
+    const templates = [];
+    while (total > 0 && data.length >= 6) {
+      const sizeRec = data.readUInt16LE(0);
+      const uid = data.readUInt16LE(2);
+      const fid = data.readInt8(4);
+      const valid = data.readInt8(5);
+      const tpl = data.slice(6, sizeRec);
+      templates.push({ uid, fid, valid, template: tpl });
+      data = data.slice(sizeRec);
+      total -= sizeRec;
+    }
+    return templates;
+  }
+
+  async cancelCapture() {
+    const res = await this._sendCommand(CONST.CMD_CANCELCAPTURE);
+    return Boolean(res.status);
+  }
+
+  async verifyUser() {
+    const res = await this._sendCommand(CONST.CMD_STARTVERIFY);
+    if (!res.status) {
+      throw new Error('Cannot verify');
+    }
+    return true;
+  }
+
+  async regEvent(flags) {
+    const payload = Buffer.alloc(4);
+    payload.writeUInt32LE(flags >>> 0, 0);
+    const res = await this._sendCommand(CONST.CMD_REG_EVENT, payload);
+    if (!res.status) {
+      throw new Error(`Cannot register events ${flags}`);
+    }
+    return true;
+  }
+
+  async setSdkBuild1() {
+    const res = await this._sendCommand(CONST.CMD_OPTIONS_WRQ, Buffer.from('SDKBuild=1'));
+    return Boolean(res.status);
+  }
+
+  async enrollUser({ uid = 0, tempId = 0, userId = '' } = {}) {
+    if (!userId) {
+      const users = await this.getUsers();
+      const found = users.find((u) => u.uid === uid);
+      if (!found) return false;
+      userId = found.userId;
+    }
+    const payload = this.tcp
+      ? (() => {
+          const buf = Buffer.alloc(26);
+          Buffer.from(String(userId)).slice(0, 24).copy(buf, 0);
+          buf.writeInt8(tempId, 24);
+          buf.writeInt8(1, 25);
+          return buf;
+        })()
+      : (() => {
+          const buf = Buffer.alloc(5);
+          buf.writeUInt32LE(Number(userId) || 0, 0);
+          buf.writeInt8(tempId, 4);
+          return buf;
+        })();
+
+    await this.cancelCapture();
+    const res = await this._sendCommand(CONST.CMD_STARTENROLL, payload);
+    if (!res.status) {
+      throw new Error(`Cannot enroll user #${uid} [${tempId}]`);
+    }
+    // Best-effort waiting for events (mirrors Python flow)
+    const attempts = 3;
+    let success = false;
+    this.tcp ? this.socket.setTimeout(60000) : null;
+    for (let i = 0; i < attempts; i += 1) {
+      const ev1 = this.tcp ? await this._recvTcpRaw() : await this._recvUdpOnce();
+      await this._ackOk().catch(() => {});
+      const ev2 = this.tcp ? await this._recvTcpRaw() : await this._recvUdpOnce();
+      await this._ackOk().catch(() => {});
+      const resCode = this._extractEnrollCode(ev2);
+      if (resCode === 0x64) {
+        continue;
+      }
+      if (resCode === 0) {
+        success = true;
+      }
+      break;
+    }
+    this.tcp ? this.socket.setTimeout(this.timeout) : null;
+    await this.regEvent(0);
+    await this.cancelCapture();
+    await this.verifyUser();
+    return success;
+  }
+
+  _extractEnrollCode(buffer) {
+    if (!buffer) return null;
+    if (this.tcp) {
+      if (!this._validateTcpTop(buffer)) return null;
+      if (buffer.length < 18) return null;
+      return buffer.readUInt16LE(16);
+    }
+    if (buffer.length < 10) return null;
+    return buffer.readUInt16LE(8);
+  }
+
+  async *liveCapture(newTimeout = 10000) {
+    const wasEnabled = this.isEnabled;
+    const users = await this.getUsers();
+    await this.cancelCapture();
+    await this.verifyUser();
+    if (!this.isEnabled) {
+      await this.enableDevice();
+    }
+    await this.regEvent(CONST.EF_ATTLOG);
+    const prevTimeout = this.timeout;
+    this.timeout = newTimeout;
+    let running = true;
+    const stop = () => {
+      running = false;
+    };
+    this.end_live_capture = stop;
+    while (running) {
+      try {
+        const pkt = this.tcp ? await this._recvTcpRaw() : await this._recvUdpOnce();
+        await this._ackOk().catch(() => {});
+        const offset = this.tcp ? 8 : 0;
+        const header = readHeader(pkt.slice(offset, offset + 8));
+        if (header[0] !== CONST.CMD_REG_EVENT) {
+          continue;
+        }
+        let data = pkt.slice(offset + 8);
+        while (data.length >= 10) {
+          let userId;
+          let status;
+          let punch;
+          let timehex;
+          if (data.length >= 10 && data.length < 12) {
+            [userId, status, punch] = [data.readUInt16LE(0), data.readUInt8(2), data.readUInt8(3)];
+            timehex = data.slice(4, 10);
+            data = data.slice(10);
+          } else if (data.length >= 12 && data.length < 14) {
+            [userId, status, punch] = [data.readUInt32LE(0), data.readUInt8(4), data.readUInt8(5)];
+            timehex = data.slice(6, 12);
+            data = data.slice(12);
+          } else {
+            userId = ZK._trimString(data, 0, 24);
+            status = data.readUInt8(24);
+            punch = data.readUInt8(25);
+            timehex = data.slice(26, 32);
+            data = data.slice(Math.min(52, data.length));
+          }
+          const ts = this._decodeTimeHex(timehex);
+          const found = users.find((u) => u.userId === String(userId));
+          const uid = found ? found.uid : Number(userId) || 0;
+          yield { userId: String(userId), uid, status, punch, timestamp: ts };
+        }
+      } catch (err) {
+        if (this.verbose) this.log(`live_capture error/timeout: ${err.message}`);
+        yield null;
+      }
+    }
+    this.timeout = prevTimeout;
+    await this.regEvent(0);
+    if (!wasEnabled) {
+      await this.disableDevice();
+    }
+  }
+
+  _decodeTimeHex(buf) {
+    if (!buf || buf.length < 6) return new Date();
+    const year = buf.readUInt8(0) + 2000;
+    const month = buf.readUInt8(1);
+    const day = buf.readUInt8(2);
+    const hour = buf.readUInt8(3);
+    const minute = buf.readUInt8(4);
+    const second = buf.readUInt8(5);
+    return new Date(year, month - 1, day, hour, minute, second);
+  }
+
   async getAttendance() {
     await this.readSizes();
     if (!this.recordsCount) {
@@ -375,6 +919,23 @@ class ZK {
       }
     }
     return rows;
+  }
+
+  async clearAttendance() {
+    const res = await this._sendCommand(CONST.CMD_CLEAR_ATTLOG);
+    if (!res.status) {
+      throw new Error('Cannot clear attendance');
+    }
+    return true;
+  }
+
+  async clearData() {
+    const res = await this._sendCommand(CONST.CMD_CLEAR_DATA);
+    if (!res.status) {
+      throw new Error('Cannot clear data');
+    }
+    this.nextUid = 1;
+    return true;
   }
 
   async refreshData() {
@@ -495,10 +1056,9 @@ class ZK {
       throw new Error('Not connected');
     }
     const packet = createHeader(command, commandString, this.sessionId, this.replyId);
-    const expected = responseSize + (this.tcp ? 8 : 0);
     const raw = this.tcp
       ? await this._sendTcp(packet)
-      : await this._sendUdp(packet, expected);
+      : await this._sendUdp(packet);
 
     const header = readHeader(raw.slice(0, 8));
     this.sessionId = header[2];
@@ -603,6 +1163,111 @@ class ZK {
     const h1 = packet.readUInt16LE(0);
     const h2 = packet.readUInt16LE(2);
     return h1 === CONST.MACHINE_PREPARE_DATA_1 && h2 === CONST.MACHINE_PREPARE_DATA_2;
+  }
+
+  async _ackOk() {
+    const header = createHeader(CONST.CMD_ACK_OK, Buffer.alloc(0), this.sessionId, CONST.USHRT_MAX - 1);
+    if (this.tcp) {
+      const top = createTcpTop(header);
+      return new Promise((resolve, reject) => {
+        this.socket.write(top, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    }
+    return new Promise((resolve, reject) => {
+      this.socket.send(header, this.port, this.ip, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+  }
+
+  async _recvUdpOnce() {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        cleanup();
+        reject(new Error('UDP receive timeout'));
+      }, this.timeout);
+      const cleanup = () => {
+        clearTimeout(timer);
+        this.socket.removeListener('message', onMsg);
+        this.socket.removeListener('error', onErr);
+      };
+      const onErr = (err) => {
+        cleanup();
+        reject(err);
+      };
+      const onMsg = (msg) => {
+        cleanup();
+        resolve(msg);
+      };
+      this.socket.once('error', onErr);
+      this.socket.once('message', onMsg);
+    });
+  }
+
+  async _recvTcpRaw() {
+    return new Promise((resolve, reject) => {
+      const chunks = [];
+      let total = 0;
+      let target = null;
+      const timer = setTimeout(() => {
+        cleanup();
+        reject(new Error('TCP receive timeout'));
+      }, this.timeout);
+      const cleanup = () => {
+        clearTimeout(timer);
+        this.socket.removeListener('data', onData);
+        this.socket.removeListener('error', onErr);
+      };
+      const onErr = (err) => {
+        cleanup();
+        reject(err);
+      };
+      const onData = (chunk) => {
+        chunks.push(chunk);
+        total += chunk.length;
+        const merged = Buffer.concat(chunks);
+        if (target === null && merged.length >= 8) {
+          target = 8 + merged.readUInt32LE(4);
+        }
+        if (target !== null && total >= target) {
+          cleanup();
+          resolve(Buffer.concat(chunks));
+        }
+      };
+      this.socket.once('error', onErr);
+      this.socket.on('data', onData);
+    });
+  }
+
+  async _receiveChunk(initialResponse) {
+    if (initialResponse.code === CONST.CMD_DATA) {
+      return initialResponse.data;
+    }
+    if (initialResponse.code !== CONST.CMD_PREPARE_DATA) {
+      return null;
+    }
+    const size = initialResponse.data.readUInt32LE(0);
+    const chunks = [];
+    let remaining = size;
+    while (remaining > 0) {
+      const packet = this.tcp ? await this._recvTcpRaw() : await this._recvUdpOnce();
+      const offset = this.tcp ? 8 : 0;
+      const header = readHeader(packet.slice(offset, offset + 8));
+      const body = packet.slice(offset + 8);
+      if (header[0] === CONST.CMD_DATA) {
+        chunks.push(body);
+        remaining -= body.length;
+      } else if (header[0] === CONST.CMD_ACK_OK) {
+        break;
+      } else {
+        break;
+      }
+    }
+    return Buffer.concat(chunks).slice(0, size);
   }
 }
 

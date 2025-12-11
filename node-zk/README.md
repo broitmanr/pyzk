@@ -7,9 +7,11 @@ Un port inicial de la librería `pyzk` a Node.js para hablar con dispositivos de
 - Conexión con handshake y autenticación (`CMD_CONNECT`/`CMD_AUTH`).
 - `enableDevice` / `disableDevice`.
 - `getTime` / `setTime`.
-- `getUsers`, `setUser`, `deleteUser`.
-- `getAttendance`.
-- `testVoice`, `restart`, `powerOff`.
+- `getUsers`, `setUser`, `deleteUser`, `getTemplates`, `getUserTemplate`, `deleteUserTemplate`, `saveUserTemplate`.
+- `getAttendance` / `clearAttendance`, `clearData`.
+- Info/opts: firmware, serial, platform, MAC, device name, pin width, extend fmt, network params.
+- Control: `unlock`, `getLockState`, `writeLcd`/`clearLcd`, `testVoice`, `restart`, `powerOff`.
+- Eventos (best-effort): `enrollUser`, `liveCapture`, `regEvent`, `cancelCapture`, `verifyUser`.
 - Soporte UDP (por defecto) y TCP (`forceUdp: false`).
 - Constantes de protocolo replicadas de `pyzk`.
 
