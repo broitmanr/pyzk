@@ -1,8 +1,9 @@
-// Constants ported from pyzk/zk/const.py
+// ZK device constants translated from zk/const.py
+'use strict';
 
 const USHRT_MAX = 65535;
 
-const CONST = {
+module.exports = {
   USHRT_MAX,
   CMD_DB_RRQ: 7,
   CMD_USER_WRQ: 8,
@@ -86,14 +87,14 @@ const CONST = {
   CMD_ACK_ERROR_INIT: 0xfffc,
   CMD_ACK_ERROR_DATA: 0xfffb,
   EF_ATTLOG: 1,
-  EF_FINGER: 1 << 1,
-  EF_ENROLLUSER: 1 << 2,
-  EF_ENROLLFINGER: 1 << 3,
-  EF_BUTTON: 1 << 4,
-  EF_UNLOCK: 1 << 5,
-  EF_VERIFY: 1 << 7,
-  EF_FPFTR: 1 << 8,
-  EF_ALARM: 1 << 9,
+  EF_FINGER: (1 << 1),
+  EF_ENROLLUSER: (1 << 2),
+  EF_ENROLLFINGER: (1 << 3),
+  EF_BUTTON: (1 << 4),
+  EF_UNLOCK: (1 << 5),
+  EF_VERIFY: (1 << 7),
+  EF_FPFTR: (1 << 8),
+  EF_ALARM: (1 << 9),
   USER_DEFAULT: 0,
   USER_ENROLLER: 2,
   USER_MANAGER: 6,
@@ -105,8 +106,6 @@ const CONST = {
   FCT_USER: 5,
   FCT_SMS: 6,
   FCT_UDATA: 7,
-  MACHINE_PREPARE_DATA_1: 20560, // 0x5050
-  MACHINE_PREPARE_DATA_2: 32130 // 0x7282
+  MACHINE_PREPARE_DATA_1: 20560,
+  MACHINE_PREPARE_DATA_2: 32130
 };
-
-module.exports = CONST;
