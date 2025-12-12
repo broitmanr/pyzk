@@ -35,8 +35,9 @@ class User {
     buffer.write(this.password, offset, 5, this.encoding); offset += 5;
     buffer.write(this.name, offset, 8, this.encoding); offset += 8;
     buffer.writeUInt32LE(this.card >>> 0, offset); offset += 4;
-    buffer.writeUInt16LE(Number.isNaN(group) ? 0 : group, offset); offset += 2;
-    buffer.writeUInt8(0, offset); offset += 1;
+    buffer.writeUInt8(0, offset); offset += 1; // pad
+    buffer.writeUInt8(Number.isNaN(group) ? 0 : group, offset); offset += 1;
+    buffer.writeInt16LE(0, offset); offset += 2; // timezone
     buffer.writeUInt32LE(Number.isNaN(userId) ? 0 : userId, offset);
     return buffer;
   }

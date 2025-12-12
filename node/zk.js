@@ -314,7 +314,7 @@ class ZK {
         const password = block.slice(3, 8).toString(this.encoding).split('\x00')[0];
         const name = block.slice(8, 16).toString(this.encoding).split('\x00')[0].trim();
         const card = block.readUInt32LE(16);
-        const groupId = `${block.readUInt16LE(20)}`;
+        const groupId = `${block.readUInt8(21)}`;
         const userId = `${block.readUInt32LE(24)}`;
         if (uid > maxUid) maxUid = uid;
         const resolvedName = name || `NN-${userId}`;
@@ -502,7 +502,11 @@ class ZK {
       if (this.tcp) {
         const packet = this.__create_tcp_top(header);
         await this.__write_tcp(packet);
-        const response = await this.__read_tcp(responseSize + 8);
+        let response = await this.__read_tcp(responseSize + 8, false);
+        if (response.length < 16) {
+          const extra = await this.__read_tcp(16 - response.length, true);
+          response = Buffer.concat([response, extra]);
+        }
         this.__tcp_length = this.__test_tcp_top(response);
         if (!this.__tcp_length) {
           throw new Error('TCP packet invalid');
@@ -544,13 +548,19 @@ class ZK {
     });
   }
 
-  async __read_tcp(length) {
+  async __read_tcp(length, requireExact = false) {
     const deadline = Date.now() + this.__timeout * 1000;
-    while (this.__tcpBuffer.length < length) {
+    while (this.__tcpBuffer.length === 0) {
       await this.__wait_for_tcp(deadline);
     }
-    const chunk = this.__tcpBuffer.slice(0, length);
-    this.__tcpBuffer = this.__tcpBuffer.slice(length);
+    if (requireExact) {
+      while (this.__tcpBuffer.length < length) {
+        await this.__wait_for_tcp(deadline);
+      }
+    }
+    const take = length ? (requireExact ? length : Math.min(length, this.__tcpBuffer.length)) : this.__tcpBuffer.length;
+    const chunk = this.__tcpBuffer.slice(0, take);
+    this.__tcpBuffer = this.__tcpBuffer.slice(take);
     return chunk;
   }
 
@@ -641,9 +651,16 @@ class ZK {
       return Buffer.alloc(0);
     }
     if (this.verbose) console.log(`expecting ${size} bytes raw data`);
-    const data = await this.__read_tcp(size);
-    if (this.verbose) console.log(`partial recv ${data.length}`);
-    return data;
+    const chunks = [];
+    let remain = size;
+    while (remain > 0) {
+      const chunk = await this.__read_tcp(remain, false);
+      chunks.push(chunk);
+      remain -= chunk.length;
+      if (this.verbose) console.log(`partial recv ${chunk.length}`);
+      if (remain > 0 && this.verbose) console.log(`still need ${remain}`);
+    }
+    return Buffer.concat(chunks);
   }
 
   async __recieve_tcp_data(dataRecv, size) {
@@ -748,7 +765,7 @@ class ZK {
         data.push(resp);
         let ackPacket = broken;
         if (ackPacket.length < 16) {
-          const extra = await this.__read_tcp(16 - ackPacket.length);
+          const extra = await this.__read_tcp(16 - ackPacket.length, true);
           ackPacket = Buffer.concat([ackPacket, extra]);
         }
         if (!this.__test_tcp_top(ackPacket)) {
